@@ -42,7 +42,8 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   server: {
-    allowedHosts: ['flyable-spotlight-antiques.ngrok-free.dev'],
+    // Allow Vercel sandbox previews while keeping Vite's host checks enabled.
+    allowedHosts: ['.vercel.run', 'flyable-spotlight-antiques.ngrok-free.dev'],
     proxy: {
       '/api': {
         target: apiTarget,
