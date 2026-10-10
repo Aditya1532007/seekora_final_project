@@ -7,14 +7,26 @@ interface ApiEnvelope<T> {
 }
 
 function apiBase(): string {
-  const configuredBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
-  if (configuredBase) return configuredBase.replace(/\/$/, "");
+  const configuredBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  if (configuredBase) return configuredBase.replace(/\/+$/, "");
 
   const segments = window.location.pathname.split("/").filter(Boolean);
   if (segments.length > 0 && segments[segments.length - 1].includes(".")) segments.pop();
   const appIndex = segments.lastIndexOf("app");
   const contextPath = appIndex >= 0 ? segments.slice(0, appIndex) : segments.slice(0, 1);
-  return `/${contextPath.join("/")}/api`.replace(/^\/\/api$/, "/api");
+  return `${contextPath.length ? `/${contextPath.join("/")}` : ""}/api`;
+}
+
+function getErrorMessage(status: number, payload: unknown): string {
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.trim()) return record.message;
+    if (typeof record.error === "string" && record.error.trim()) return record.error;
+  }
+  if (status >= 500) {
+    return "Seekora could not complete that search. The AI service may be unavailable; please try again shortly.";
+  }
+  return `Request failed (${status}).`;
 }
 
 export async function apiRequest<T>(
@@ -36,20 +48,29 @@ export async function apiRequest<T>(
     throw new Error("Could not reach the Seekora server. Check that Tomcat is running.");
   }
 
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new Error(`Seekora returned an invalid response (${response.status}).`);
+  const responseText = await response.text();
+  let payload: unknown = null;
+  if (responseText.trim()) {
+    try {
+      payload = JSON.parse(responseText) as unknown;
+    } catch {
+      throw new Error(
+        response.status >= 500
+          ? "Seekora could not complete that search. The AI service may be unavailable; please try again shortly."
+          : `Seekora returned an invalid response (${response.status}).`,
+      );
+    }
   }
 
+  if (!response.ok) {
+    const message = getErrorMessage(response.status, payload);
+    throw new Error(response.status === 401 ? "Your session has expired. Please sign in again." : message);
+  }
   if (!payload || typeof payload !== "object" || !("success" in payload)) {
     throw new Error(`Seekora returned an invalid response (${response.status}).`);
   }
   const envelope = payload as ApiEnvelope<T>;
-  if (!response.ok || envelope.success === false) {
-    throw new Error(envelope.message || `Request failed (${response.status}).`);
-  }
+  if (envelope.success === false) throw new Error(envelope.message || getErrorMessage(response.status, payload));
   if (envelope.success !== true || !("data" in payload)) {
     throw new Error(`Seekora returned an invalid response (${response.status}).`);
   }
