@@ -29,11 +29,11 @@ export async function apiRequest<T>(
     response = await fetch(`${apiBase()}${path}`, {
       method: options.method ?? "GET",
       headers,
-      credentials: "same-origin",
+      credentials: "include",
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch {
-    throw new Error("Could not reach the Seekora server. Check that Tomcat is running.");
+    throw new Error("Could not reach the Seekora API. Check the API deployment and connection.");
   }
 
   let payload: unknown;

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: seekora-frontend
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://seekora-api.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /app
+        destination: /react-app.html
+      - type: rewrite
+        source: /app/*
+        destination: /react-app.html
