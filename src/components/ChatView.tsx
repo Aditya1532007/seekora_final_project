@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Loader2, AlertCircle, Menu, LogOut, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { supabase } from "@/lib/supabase";
-import { sendToAI } from "@/lib/api";
+import { getConversationMessages, sendToAI } from "@/lib/api";
 import type { Conversation, Message, SearchMode } from "@/types";
 import { Sidebar } from "@/components/Sidebar";
 import { SearchInput } from "@/components/SearchInput";
@@ -19,6 +18,13 @@ export function ChatView() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationViewRef = useRef(0);
+  const messageLoadRef = useRef(0);
+  const [retryRequest, setRetryRequest] = useState<{
+    query: string;
+    mode: SearchMode;
+    imageData?: string;
+  } | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -29,32 +35,40 @@ export function ChatView() {
   }, [messages, loading, scrollToBottom]);
 
   const loadMessages = useCallback(async (convId: string) => {
+    const requestId = ++messageLoadRef.current;
     setLoadingMessages(true);
-    const { data } = await supabase
-      .from("messages")
-      .select("id, conversation_id, role, content, sources, mode, created_at")
-      .eq("conversation_id", convId)
-      .order("created_at", { ascending: true });
-
-    const typed: Message[] = (data || []).map((m) => ({
-      ...m,
-      sources: typeof m.sources === "string" ? JSON.parse(m.sources as string) : m.sources || [],
-    }));
-    setMessages(typed);
-    setLoadingMessages(false);
+    try {
+      const loaded = await getConversationMessages(convId);
+      if (requestId === messageLoadRef.current) {
+        setMessages(loaded);
+        setError(null);
+      }
+    } catch (loadError) {
+      if (requestId === messageLoadRef.current) {
+        setError(loadError instanceof Error ? loadError.message : "Could not load conversation.");
+      }
+    } finally {
+      if (requestId === messageLoadRef.current) setLoadingMessages(false);
+    }
   }, []);
 
   const handleSelectConversation = (id: string) => {
+    conversationViewRef.current += 1;
     setActiveId(id);
     setError(null);
+    setRetryRequest(null);
     setSidebarOpen(false);
     loadMessages(id);
   };
 
   const handleNewConversation = () => {
+    conversationViewRef.current += 1;
+    messageLoadRef.current += 1;
     setActiveId(null);
     setMessages([]);
     setError(null);
+    setRetryRequest(null);
+    setLoadingMessages(false);
     setSidebarOpen(false);
   };
 
@@ -69,7 +83,10 @@ export function ChatView() {
   };
 
   const handleSubmit = async (query: string, mode: SearchMode, imageData?: string) => {
+    const submittedView = conversationViewRef.current;
+    const request = { query, mode, imageData };
     setError(null);
+    setRetryRequest(request);
     setLoading(true);
 
     const tempUserMsg: Message = {
@@ -94,9 +111,11 @@ export function ChatView() {
         history,
       });
 
+      if (submittedView !== conversationViewRef.current) return;
+
       const aiMsg: Message = {
         id: `ai-${Date.now()}`,
-        conversation_id: result.conversationId,
+        conversation_id: result.conversationId || activeId || "",
         role: "assistant",
         content: result.answer,
         sources: result.sources,
@@ -118,8 +137,10 @@ export function ChatView() {
         ]);
       }
 
-      loadMessages(result.conversationId);
+      setRetryRequest(null);
+      if (result.conversationId) await loadMessages(result.conversationId);
     } catch (err) {
+      if (submittedView !== conversationViewRef.current) return;
       const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
       setError(msg);
       setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
@@ -129,15 +150,20 @@ export function ChatView() {
   };
 
   const handleRetry = () => {
-    if (messages.length === 0) return;
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-    if (lastUserMsg) {
-      handleSubmit(lastUserMsg.content, lastUserMsg.mode);
+    if (retryRequest) handleSubmit(retryRequest.query, retryRequest.mode, retryRequest.imageData);
+  };
+
+  const handleSignOut = async () => {
+    setError(null);
+    try {
+      await signOut();
+    } catch (signOutError) {
+      setError(signOutError instanceof Error ? signOutError.message : "Could not sign out. Please try again.");
     }
   };
 
   return (
-    <div className="flex h-screen bg-slate-950 overflow-hidden">
+    <div className="flex h-screen bg-transparent overflow-hidden">
       <Sidebar
         conversations={conversations}
         activeId={activeId}
@@ -169,7 +195,7 @@ export function ChatView() {
               {user?.email}
             </span>
             <button
-              onClick={signOut}
+              onClick={() => void handleSignOut()}
               className="p-2 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800 transition-colors"
               title="Sign out"
             >
@@ -214,12 +240,14 @@ export function ChatView() {
                   <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="text-sm text-red-400">{error}</p>
-                    <button
-                      onClick={handleRetry}
-                      className="text-xs text-red-400/70 hover:text-red-300 mt-2 underline"
-                    >
-                      Try again
-                    </button>
+                    {retryRequest && (
+                      <button
+                        onClick={handleRetry}
+                        className="text-xs text-red-400/70 hover:text-red-300 mt-2 underline"
+                      >
+                        Try again
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

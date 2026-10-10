@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Copy, Check, Download, RefreshCw, ExternalLink } from "lucide-react";
 import type { Message, Source } from "@/types";
 import { formatMarkdown, exportAsText } from "@/lib/markdown";
+import { safeExternalUrl } from "@/lib/urls";
 
 interface AnswerCardProps {
   message: Message;
@@ -54,18 +55,24 @@ export function AnswerCard({ message, onRetry }: AnswerCardProps) {
             <div className="mt-4 space-y-2">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sources</p>
               <div className="flex flex-wrap gap-2">
-                {sources.map((src, i) => (
-                  <a
-                    key={i}
-                    href={src.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300 hover:text-cyan-300 transition-all max-w-xs"
-                  >
-                    <ExternalLink className="w-3 h-3 shrink-0" />
-                    <span className="truncate">{src.title || src.url}</span>
-                  </a>
-                ))}
+                {sources.map((src, i) => {
+                  const url = safeExternalUrl(src.url);
+                  const title = src.title || src.url;
+                  return url ? (
+                    <a
+                      key={i}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300 hover:text-cyan-300 transition-all max-w-xs"
+                    >
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{title}</span>
+                    </a>
+                  ) : (
+                    <span key={i} className="text-xs text-slate-400">{title}</span>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -102,9 +109,10 @@ export function AnswerCard({ message, onRetry }: AnswerCardProps) {
 }
 
 export function SourceLink({ source }: { source: Source }) {
-  return (
+  const url = safeExternalUrl(source.url);
+  return url ? (
     <a
-      href={source.url}
+      href={url}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300 hover:text-cyan-300 transition-all"
@@ -112,5 +120,7 @@ export function SourceLink({ source }: { source: Source }) {
       <ExternalLink className="w-3 h-3" />
       {source.title || source.url}
     </a>
+  ) : (
+    <span className="text-xs text-slate-400">{source.title || source.url}</span>
   );
 }

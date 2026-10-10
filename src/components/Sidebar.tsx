@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, MessageSquare, Trash2, Loader2, X } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { deleteConversation, getConversations } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { Conversation } from "@/types";
 
@@ -19,9 +19,30 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDeleted, i
   const [loading, setLoading] = useState(true);
   const [allConvs, setAllConvs] = useState<Conversation[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadConversations();
+    if (!user) {
+      setAllConvs([]);
+      setLoading(false);
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    setError(null);
+    getConversations()
+      .then((items) => {
+        if (active) setAllConvs(items);
+      })
+      .catch((loadError: unknown) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : "Could not load conversations.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [user]);
 
   useEffect(() => {
@@ -42,25 +63,19 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDeleted, i
     }
   }, [conversations]);
 
-  const loadConversations = async () => {
-    if (!user) return;
-    setLoading(true);
-    const { data } = await supabase
-      .from("conversations")
-      .select("id, title, created_at, updated_at")
-      .order("updated_at", { ascending: false });
-
-    if (data) setAllConvs(data);
-    setLoading(false);
-  };
-
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setDeletingId(id);
-    await supabase.from("conversations").delete().eq("id", id);
-    setAllConvs((prev) => prev.filter((c) => c.id !== id));
-    setDeletingId(null);
-    onDeleted(id);
+    setError(null);
+    try {
+      await deleteConversation(id);
+      setAllConvs((prev) => prev.filter((c) => c.id !== id));
+      onDeleted(id);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Could not delete conversation.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -100,6 +115,11 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDeleted, i
         </div>
 
         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
+          {error && (
+            <p role="alert" className="mx-2 my-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              {error}
+            </p>
+          )}
           {loading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="w-5 h-5 text-slate-500 animate-spin" />

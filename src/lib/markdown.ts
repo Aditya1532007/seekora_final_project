@@ -1,10 +1,10 @@
 export function formatMarkdown(text: string): string {
   if (!text) return "";
 
-  let html = text;
+  let html = escapeHtml(text);
 
   html = html.replace(/```([\s\S]*?)```/g, (_m, code) => {
-    return `<pre class="bg-slate-800/60 rounded-lg p-4 overflow-x-auto my-3 text-sm text-slate-200"><code>${escapeHtml(code.trim())}</code></pre>`;
+    return `<pre class="bg-slate-800/60 rounded-lg p-4 overflow-x-auto my-3 text-sm text-slate-200"><code>${code.trim()}</code></pre>`;
   });
 
   html = html.replace(/`([^`]+)`/g, '<code class="bg-slate-800/60 rounded px-1.5 py-0.5 text-sm text-cyan-300">$1</code>');
@@ -66,7 +66,9 @@ function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 export function exportAsText(title: string, content: string, sources: { title: string; url: string }[]): string {

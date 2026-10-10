@@ -141,10 +141,10 @@ function TechStackSection() {
   const stack = [
     { icon: "🎨", name: "HTML · CSS · JS", type: "Frontend" },
     { icon: "⚛️", name: "React · TypeScript", type: "Frontend" },
-    { icon: "🗄️", name: "Supabase", type: "Database" },
-    { icon: "🔌", name: "REST API · JSON", type: "Integration" },
-    { icon: "🔒", name: "Row Level Security", type: "Security" },
-    { icon: "⚙️", name: "Edge Functions", type: "AI Processing" },
+    { icon: "🗄️", name: "MySQL", type: "Database" },
+    { icon: "🔌", name: "Java REST API", type: "Integration" },
+    { icon: "🔒", name: "Tomcat Sessions", type: "Authentication" },
+    { icon: "⚙️", name: "Google Gemini API", type: "AI Processing" },
   ];
   return (
     <section id="stack" className="sk-section">
@@ -153,7 +153,7 @@ function TechStackSection() {
         Our <span className="grad-text">Technology Stack</span>
       </h2>
       <p className="section-sub reveal visible">
-        A React frontend backed by Supabase database, edge functions, and AI-powered search.
+        A React frontend backed by Java servlets, MySQL, and server-side AI processing.
       </p>
       <div className="stack-grid">
         {stack.map((s, i) => (

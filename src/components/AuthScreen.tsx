@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 export function AuthScreen() {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -15,8 +16,9 @@ export function AuthScreen() {
     setError(null);
     setLoading(true);
 
-    const fn = mode === "signin" ? signIn : signUp;
-    const { error: err } = await fn(email, password);
+    const { error: err } = mode === "signin"
+      ? await signIn(email, password)
+      : await signUp(fullName, email, password);
 
     if (err) {
       setError(err);
@@ -26,7 +28,7 @@ export function AuthScreen() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-950/75 via-slate-900/60 to-slate-950/75" />
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl" />
 
@@ -64,6 +66,20 @@ export function AuthScreen() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {mode === "signup" && (
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Full name</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={120}
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
+                  placeholder="Your name"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
               <div className="relative">

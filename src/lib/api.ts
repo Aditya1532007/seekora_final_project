@@ -1,5 +1,60 @@
-import { supabase, EDGE_FUNCTION_URL } from "@/lib/supabase";
-import type { AIResponse, SearchMode, Source } from "@/types";
+import type { AIResponse, Conversation, Message, SearchMode, Source } from "@/types";
+
+interface ApiEnvelope<T> {
+  success: boolean;
+  message: string;
+  data: T;
+}
+
+function apiBase(): string {
+  const configuredBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (configuredBase) return configuredBase.replace(/\/$/, "");
+
+  const segments = window.location.pathname.split("/").filter(Boolean);
+  if (segments.length > 0 && segments[segments.length - 1].includes(".")) segments.pop();
+  const appIndex = segments.lastIndexOf("app");
+  const contextPath = appIndex >= 0 ? segments.slice(0, appIndex) : segments.slice(0, 1);
+  return `/${contextPath.join("/")}/api`.replace(/^\/\/api$/, "/api");
+}
+
+export async function apiRequest<T>(
+  path: string,
+  options: { method?: string; body?: unknown } = {},
+): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase()}${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      credentials: "same-origin",
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+  } catch {
+    throw new Error("Could not reach the Seekora server. Check that Tomcat is running.");
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`Seekora returned an invalid response (${response.status}).`);
+  }
+
+  if (!payload || typeof payload !== "object" || !("success" in payload)) {
+    throw new Error(`Seekora returned an invalid response (${response.status}).`);
+  }
+  const envelope = payload as ApiEnvelope<T>;
+  if (!response.ok || envelope.success === false) {
+    throw new Error(envelope.message || `Request failed (${response.status}).`);
+  }
+  if (envelope.success !== true || !("data" in payload)) {
+    throw new Error(`Seekora returned an invalid response (${response.status}).`);
+  }
+  return envelope.data;
+}
 
 interface SendMessageParams {
   query: string;
@@ -10,56 +65,45 @@ interface SendMessageParams {
   save?: boolean;
 }
 
+interface AiApiResponse {
+  answer: string;
+  sources?: Source[];
+  conversationId: string | null;
+}
+
 export async function sendToAI(params: SendMessageParams): Promise<AIResponse> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-  };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const resp = await fetch(EDGE_FUNCTION_URL, {
+  const response = await apiRequest<AiApiResponse>("/ai", {
     method: "POST",
-    headers,
-    body: JSON.stringify({
-      query: params.query,
-      mode: params.mode,
-      imageData: params.imageData,
-      conversationId: params.conversationId,
-      history: params.history,
-      save: params.save ?? true,
-    }),
+    body: { ...params, save: params.save ?? true },
   });
-
-  if (!resp.ok) {
-    const errBody = await resp.json().catch(() => ({ error: "Request failed" }));
-    throw new Error(errBody.error || `Request failed (${resp.status})`);
+  if (!response || typeof response.answer !== "string" || !response.answer.trim()) {
+    throw new Error("Seekora did not return an answer. Please try again.");
   }
-
-  const data = await resp.json();
-  if (data.error) {
-    throw new Error(data.error);
-  }
-
   return {
-    answer: data.answer,
-    sources: data.sources as Source[],
-    conversationId: data.conversationId,
+    answer: response.answer,
+    sources: Array.isArray(response.sources) ? response.sources : [],
+    conversationId: response.conversationId ?? "",
   };
 }
 
+export function getConversations(): Promise<Conversation[]> {
+  return apiRequest<Conversation[]>("/conversations");
+}
+
+export function getConversationMessages(conversationId: string): Promise<Message[]> {
+  return apiRequest<Message[]>(`/conversations/${encodeURIComponent(conversationId)}/messages`);
+}
+
+export function deleteConversation(conversationId: string): Promise<void> {
+  return apiRequest<void>(`/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
+}
+
 export async function subscribeNewsletter(email: string): Promise<string> {
-  const { error } = await supabase.from("newsletter_subscribers").insert({ email });
-  if (error) {
-    if (error.code === "23505") return "You're already subscribed!";
-    throw new Error(error.message);
-  }
-  return "Thanks for subscribing! We'll keep you updated.";
+  const result = await apiRequest<unknown>("/newsletter", {
+    method: "POST",
+    body: { email },
+  });
+  return typeof result === "string" ? result : "Thanks for subscribing!";
 }
 
 export async function saveContactMessage(data: {
@@ -68,21 +112,14 @@ export async function saveContactMessage(data: {
   subject: string;
   message: string;
 }): Promise<string> {
-  const { error } = await supabase.from("contact_messages").insert(data);
-  if (error) throw new Error(error.message);
-  return "Your message has been saved. We'll get back to you soon.";
+  const result = await apiRequest<unknown>("/contact", { method: "POST", body: data });
+  return typeof result === "string" ? result : "Your message has been saved.";
 }
 
 export async function saveSubscription(planCode: string, billingCycle: string): Promise<string> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session?.user) {
-    throw new Error("Please sign in to choose a plan.");
-  }
-
-  const { error } = await supabase.from("subscriptions").insert({
-    plan_code: planCode,
-    billing_cycle: billingCycle,
+  const result = await apiRequest<unknown>("/subscriptions", {
+    method: "POST",
+    body: { planCode, billingCycle },
   });
-  if (error) throw new Error(error.message);
-  return `You're now on the ${planCode} plan (${billingCycle}).`;
+  return typeof result === "string" ? result : "Your plan selection has been saved.";
 }

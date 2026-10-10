@@ -62,6 +62,9 @@ export function Navbar({ onOpenAuth, onOpenPalette, isSignedIn, userEmail, onSig
         ))}
       </ul>
       <div className="nav-cta" style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        {isSignedIn && userEmail && (
+          <span className="text-sm text-slate-400 max-w-40 truncate">{userEmail}</span>
+        )}
         <span className="kbd-hint" onClick={onOpenPalette} style={{ cursor: "pointer" }}>
           <kbd>Ctrl</kbd>+<kbd>K</kbd>
         </span>

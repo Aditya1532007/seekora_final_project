@@ -20,7 +20,7 @@ export function EmptyState({ onSuggestion }: EmptyStateProps) {
       </div>
       <h2 className="text-3xl font-bold text-white tracking-tight">Welcome to Seekora AI</h2>
       <p className="text-slate-400 mt-3 text-center max-w-md">
-        Ask questions, research topics, analyze webpages, and understand images — all with AI-powered structured answers and real sources.
+        Ask questions and research topics with answers summarized from multiple websites and linked sources. You can also analyze webpages and images.
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full max-w-2xl">

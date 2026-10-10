@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { sendToAI } from "@/lib/api";
 import type { ChatMessage } from "@/types";
+import { safeExternalUrl } from "@/lib/urls";
 
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
@@ -55,11 +56,16 @@ export function ChatWidget() {
                 {msg.sources && msg.sources.length > 0 && (
                   <div className="chat-sources">
                     <strong>Sources</strong>
-                    {msg.sources.map((s, j) => (
-                      <a key={j} href={s.url} target="_blank" rel="noopener noreferrer">
-                        {s.title || s.url}
-                      </a>
-                    ))}
+                    {msg.sources.map((s, j) => {
+                      const url = safeExternalUrl(s.url);
+                      return url ? (
+                        <a key={j} href={url} target="_blank" rel="noopener noreferrer">
+                          {s.title || s.url}
+                        </a>
+                      ) : (
+                        <span key={j}>{s.title || s.url}</span>
+                      );
+                    })}
                   </div>
                 )}
               </div>

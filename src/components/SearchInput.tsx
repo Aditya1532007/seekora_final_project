@@ -12,12 +12,17 @@ const MODE_CONFIG: Record<SearchMode, { label: string; icon: typeof MessageSquar
   ask: {
     label: "Ask AI",
     icon: MessageSquare,
-    placeholder: "Ask any question and get a structured answer...",
+    placeholder: "Ask a question — Seekora searches multiple websites and summarizes...",
+  },
+  chat: {
+    label: "Chat",
+    icon: MessageSquare,
+    placeholder: "Continue the conversation with Seekora...",
   },
   research: {
     label: "Research",
     icon: SearchIcon,
-    placeholder: "Enter a research question — Seekora will find sources...",
+    placeholder: "Research a topic across multiple websites...",
   },
   analyze_url: {
     label: "Analyze URL",
@@ -36,6 +41,7 @@ export function SearchInput({ onSubmit, loading, disabled }: SearchInputProps) {
   const [mode, setMode] = useState<SearchMode>("ask");
   const [imageData, setImageData] = useState<string | null>(null);
   const [imageName, setImageName] = useState("");
+  const [imageError, setImageError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: FormEvent) => {
@@ -45,6 +51,7 @@ export function SearchInput({ onSubmit, loading, disabled }: SearchInputProps) {
     setQuery("");
     setImageData(null);
     setImageName("");
+    setImageError(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -57,15 +64,34 @@ export function SearchInput({ onSubmit, loading, disabled }: SearchInputProps) {
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) return;
+    setImageError(null);
+    if (!["image/jpeg", "image/png", "image/gif", "image/webp"].includes(file.type)) {
+      setImageError("Choose a JPEG, PNG, GIF, or WebP image.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setImageError("Images must be 5 MB or smaller.");
+      e.target.value = "";
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = () => {
-      setImageData(reader.result as string);
-      setImageName(file.name);
+      if (typeof reader.result !== "string") {
+        setImageError("Could not read the image file.");
+      } else {
+        setImageData(reader.result);
+        setImageName(file.name);
+        setMode("analyze_image");
+      }
+      e.target.value = "";
+    };
+    reader.onerror = () => {
+      setImageError("Could not read the image file.");
+      e.target.value = "";
     };
     reader.readAsDataURL(file);
-    setMode("analyze_image");
   };
 
   const modes = Object.entries(MODE_CONFIG) as [SearchMode, typeof MODE_CONFIG[SearchMode]][];
@@ -74,13 +100,18 @@ export function SearchInput({ onSubmit, loading, disabled }: SearchInputProps) {
   return (
     <div className="border-t border-slate-800 bg-slate-900/50 backdrop-blur-xl">
       <div className="max-w-3xl mx-auto px-4 py-4">
+        {imageError && (
+          <p role="alert" className="mb-3 text-sm text-red-400">{imageError}</p>
+        )}
+
         {imageData && (
           <div className="mb-3 inline-flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-2">
             <img src={imageData} alt="upload preview" className="w-8 h-8 rounded object-cover" />
             <span className="text-xs text-slate-300 max-w-32 truncate">{imageName}</span>
             <button
-              onClick={() => { setImageData(null); setImageName(""); }}
+              onClick={() => { setImageData(null); setImageName(""); setImageError(null); }}
               className="text-slate-500 hover:text-red-400"
+              aria-label="Remove uploaded image"
             >
               <X className="w-4 h-4" />
             </button>
@@ -120,7 +151,7 @@ export function SearchInput({ onSubmit, loading, disabled }: SearchInputProps) {
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/gif,image/webp"
               onChange={handleFile}
               className="hidden"
             />

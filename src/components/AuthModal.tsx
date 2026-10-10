@@ -31,8 +31,9 @@ export function AuthModal({ open, mode, onClose, onModeChange }: AuthModalProps)
 
     setLoading(true);
     try {
-      const fn = mode === "login" ? signIn : signUp;
-      const { error } = await fn(email, password);
+      const { error } = mode === "login"
+        ? await signIn(email, password)
+        : await signUp(name, email, password);
       if (error) {
         showToast(error);
       } else {
@@ -71,9 +72,11 @@ export function AuthModal({ open, mode, onClose, onModeChange }: AuthModalProps)
             <input
               className="modal-input"
               type="text"
+              maxLength={120}
               placeholder="Full name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              required
             />
           )}
           <input

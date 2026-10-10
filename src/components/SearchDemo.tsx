@@ -1,14 +1,28 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { sendToAI } from "@/lib/api";
 import { showToast } from "@/components/Toast";
 import type { Source } from "@/types";
+import { safeExternalUrl } from "@/lib/urls";
 
 interface SearchResult {
   answer: string;
   sources: Source[];
 }
 
-export function SearchDemo({ onRequireAuth }: { onRequireAuth: () => void }) {
+interface SpeechRecognitionResultEvent {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+}
+
+interface BrowserSpeechRecognition {
+  lang: string;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  start: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+export function SearchDemo() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SearchResult | null>(null);
@@ -17,8 +31,6 @@ export function SearchDemo({ onRequireAuth }: { onRequireAuth: () => void }) {
   const [urlResult, setUrlResult] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageResult, setImageResult] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
   const handleSearch = async (searchQuery?: string) => {
     const q = (searchQuery || query).trim();
     if (!q) {
@@ -48,7 +60,11 @@ export function SearchDemo({ onRequireAuth }: { onRequireAuth: () => void }) {
   };
 
   const handleVoice = () => {
-    const SR = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechWindow = window as Window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const SR = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SR) {
       showToast("Voice search not supported in this browser — try Chrome!");
       return;
@@ -56,7 +72,7 @@ export function SearchDemo({ onRequireAuth }: { onRequireAuth: () => void }) {
     const rec = new SR();
     rec.lang = "en-US";
     showToast("Listening... speak now!");
-    rec.onresult = (e: any) => {
+    rec.onresult = (e) => {
       const text = e.results[0][0].transcript;
       setQuery(text);
       handleSearch(text);
@@ -98,8 +114,17 @@ export function SearchDemo({ onRequireAuth }: { onRequireAuth: () => void }) {
 
     try {
       const reader = new FileReader();
+      reader.onerror = () => {
+        setImageResult("Could not read the image file.");
+        setImageLoading(false);
+      };
       reader.onload = async () => {
-        const imageData = reader.result as string;
+        if (typeof reader.result !== "string") {
+          setImageResult("Could not read the image file.");
+          setImageLoading(false);
+          return;
+        }
+        const imageData = reader.result;
         try {
           const res = await sendToAI({
             query: promptInput.value.trim() || "Please describe and analyze this image in detail.",
@@ -115,7 +140,7 @@ export function SearchDemo({ onRequireAuth }: { onRequireAuth: () => void }) {
         }
       };
       reader.readAsDataURL(file);
-    } catch (err) {
+    } catch {
       setImageResult("Could not read the image file.");
       setImageLoading(false);
     }
@@ -200,11 +225,14 @@ export function SearchDemo({ onRequireAuth }: { onRequireAuth: () => void }) {
               <div style={{ marginTop: "10px" }}>{renderMarkdownText(result.answer)}</div>
               {result.sources.length > 0 && (
                 <div style={{ fontSize: "0.75rem", color: "var(--cyan)", display: "flex", gap: "16px", flexWrap: "wrap", marginTop: "14px" }}>
-                  {result.sources.map((src, i) => (
-                    <a key={i} href={src.url} target="_blank" rel="noopener noreferrer">
-                      {src.title || "Source"}
-                    </a>
-                  ))}
+                  {result.sources.map((src, i) => {
+                    const url = safeExternalUrl(src.url);
+                    return url ? (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                        {src.title || "Source"}
+                      </a>
+                    ) : null;
+                  })}
                 </div>
               )}
               <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
@@ -254,7 +282,7 @@ export function SearchDemo({ onRequireAuth }: { onRequireAuth: () => void }) {
           <div style={{ marginTop: "16px", color: "var(--text)", whiteSpace: "pre-wrap", textAlign: "left" }}>
             {urlLoading ? "Reading the public webpage..." : renderMarkdownText(urlResult || "")}
           </div>
-        }
+        )}
         {(imageResult || imageLoading) && (
           <div style={{ marginTop: "16px", color: "var(--text)", whiteSpace: "pre-wrap", textAlign: "left" }}>
             {imageLoading ? "Uploading and analyzing the image..." : renderMarkdownText(imageResult || "")}
