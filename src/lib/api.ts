@@ -1,11 +1,5 @@
 import type { AIResponse, Conversation, Message, SearchMode, Source } from "@/types";
 
-interface ApiEnvelope<T> {
-  success: boolean;
-  message: string;
-  data: T;
-}
-
 function apiBase(): string {
   const configuredBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
   if (configuredBase) return configuredBase.replace(/\/$/, "");
@@ -37,23 +31,54 @@ export async function apiRequest<T>(
   }
 
   let payload: unknown;
+  let responseText = "";
   try {
-    payload = await response.json();
-  } catch {
+    responseText = await response.text();
+    if (!responseText.trim()) {
+      console.warn("Seekora API returned an empty response", { path, status: response.status });
+      throw new Error(`Seekora returned an empty response (${response.status}).`);
+    }
+    payload = JSON.parse(responseText) as unknown;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Seekora returned an empty response")) throw err;
+    console.warn("Seekora API returned non-JSON content", {
+      path,
+      status: response.status,
+      contentType: response.headers.get("content-type") || "missing",
+    });
     throw new Error(`Seekora returned an invalid response (${response.status}).`);
   }
 
-  if (!payload || typeof payload !== "object" || !("success" in payload)) {
-    throw new Error(`Seekora returned an invalid response (${response.status}).`);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    console.warn("Seekora API returned an unexpected JSON shape", {
+      path, status: response.status, type: Array.isArray(payload) ? "array" : typeof payload,
+    });
+    throw new Error(`Seekora returned an unexpected response (${response.status}).`);
   }
-  const envelope = payload as ApiEnvelope<T>;
-  if (!response.ok || envelope.success === false) {
-    throw new Error(envelope.message || `Request failed (${response.status}).`);
+
+  const record = payload as Record<string, unknown>;
+  if (record.success === true && "data" in record) {
+    if (!response.ok) {
+      throw new Error(typeof record.message === "string" ? record.message : `Request failed (${response.status}).`);
+    }
+    return record.data as T;
   }
-  if (envelope.success !== true || !("data" in payload)) {
-    throw new Error(`Seekora returned an invalid response (${response.status}).`);
+  if (!response.ok || record.success === false) {
+    throw new Error(typeof record.message === "string" && record.message.trim()
+      ? record.message
+      : `Request failed (${response.status}).`);
   }
-  return envelope.data;
+
+  // Some deployed API revisions return the AI object without the common envelope.
+  if (path === "/ai" && typeof record.answer === "string") return record as T;
+
+  console.warn("Seekora API returned an unrecognized successful JSON shape", {
+    path,
+    status: response.status,
+    contentType: response.headers.get("content-type") || "missing",
+    fields: Object.keys(record),
+  });
+  throw new Error(`Seekora returned an unexpected response (${response.status}).`);
 }
 
 interface SendMessageParams {
@@ -79,10 +104,15 @@ export async function sendToAI(params: SendMessageParams): Promise<AIResponse> {
   if (!response || typeof response.answer !== "string" || !response.answer.trim()) {
     throw new Error("Seekora did not return an answer. Please try again.");
   }
+  const sources = Array.isArray(response.sources)
+    ? response.sources.filter((source): source is Source =>
+      !!source && typeof source === "object"
+      && typeof source.title === "string" && typeof source.url === "string")
+    : [];
   return {
     answer: response.answer,
-    sources: Array.isArray(response.sources) ? response.sources : [],
-    conversationId: response.conversationId ?? "",
+    sources,
+    conversationId: typeof response.conversationId === "string" ? response.conversationId : "",
   };
 }
 
